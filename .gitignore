@@ -1,0 +1,34 @@
+# ---- Secrets / environment ----
+.env
+.env.*
+!.env.example
+
+# ---- Python (backend) ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+venv/
+.venv/
+env/
+
+# ---- Uploaded files (candidate resumes, JDs, avatars — PII) ----
+backend/uploads/
+
+# ---- Node / frontend ----
+node_modules/
+dist/
+dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---- Editor / OS ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp

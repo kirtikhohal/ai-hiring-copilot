@@ -1,0 +1,104 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background: #f6f7fb;
+    color: #14161f;
+    font-family: "Manrope", system-ui, sans-serif;
+    letter-spacing: -0.008em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background: #ddddfc;
+    color: #14161f;
+  }
+
+  /* Global focus ring for form fields (accent border + soft ring). */
+  input:focus,
+  textarea:focus,
+  select:focus {
+    outline: none;
+    border-color: #6366f1 !important;
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.13);
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: #a7adc0;
+  }
+
+  /* Modern slim, rounded scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #d7dae6 transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: #d7dae6;
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: #c2c6d6;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+}
+
+@layer components {
+  .eyebrow {
+    @apply text-[11.5px] font-extrabold uppercase tracking-eyebrow text-accent;
+  }
+  .micro-label {
+    @apply text-[10.5px] font-extrabold uppercase tracking-micro;
+  }
+  /* Page title — 26px / 800 / -0.025em (v2: tighter, denser) */
+  .h1 {
+    @apply text-[26px] font-extrabold tracking-h1 leading-[1.2] text-ink;
+  }
+  .scroll-box {
+    @apply overflow-y-auto pr-1.5;
+    scrollbar-gutter: stable;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+}
+
+/* Toast slide-in from the right (used by the toast viewport). */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+.animate-toast-in {
+  animation: toast-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
