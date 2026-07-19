@@ -1,3 +1,4 @@
+import os
 from typing import List, Optional
 
 from app.db.supabase_client import get_client
@@ -78,6 +79,24 @@ def get_jd_row(jd_id: str) -> Optional[dict]:
     return result.data[0] if result.data else None
 
 
+def get_jd_rows(ids: List[str]) -> dict:
+    """Batch-fetch JD rows by id in a single query -> {id: row}."""
+    ids = list({i for i in ids if i})
+    if not ids:
+        return {}
+    rows = get_client().table("jds").select("*").in_("id", ids).execute().data
+    return {r["id"]: r for r in rows}
+
+
+def get_projects_by_ids(ids: List[str]) -> dict:
+    """Batch-fetch projects by id in a single query -> {id: row}."""
+    ids = list({i for i in ids if i})
+    if not ids:
+        return {}
+    rows = get_client().table("projects").select("*").in_("id", ids).execute().data
+    return {r["id"]: r for r in rows}
+
+
 def list_jds() -> List[dict]:
     result = (
         get_client()
@@ -124,9 +143,16 @@ def get_resume_stats_bulk() -> dict:
         if (row.get("state") or "") == "shortlisted":
             entry["shortlisted"] += 1
 
-    maps = get_client().table("candidate_mappings").select("jd_id, state").execute()
+    # Candidates cross-mapped INTO an opening count toward that opening's totals
+    # (count, top score, shortlisted) — they show in its ranked list, so the
+    # dashboard/clients/internal numbers must include them.
+    maps = get_client().table("candidate_mappings").select("jd_id, state, hiring_score").execute()
     for m in maps.data:
         entry = entry_for(m["jd_id"])
+        entry["resume_count"] += 1
+        score = m.get("hiring_score")
+        if score is not None and (entry["top_score"] is None or score > entry["top_score"]):
+            entry["top_score"] = score
         if (m.get("state") or "") == "shortlisted":
             entry["shortlisted"] += 1
 
@@ -328,6 +354,99 @@ def candidate_directory() -> List[dict]:
             }
         )
     return out
+
+
+def _remove_file(path):
+    """Best-effort delete of a stored upload file; never fails the request."""
+    try:
+        if path and os.path.exists(path):
+            os.remove(path)
+    except Exception as e:
+        print(f"[crud._remove_file] could not remove {path!r}: {e!r}")
+
+
+def delete_resume(resume_id: str) -> None:
+    """Delete one candidate: its cross-opening mappings, stored file, and row."""
+    client = get_client()
+    row = client.table("resumes").select("file_path").eq("id", resume_id).execute().data
+    client.table("candidate_mappings").delete().eq("resume_id", resume_id).execute()
+    client.table("resumes").delete().eq("id", resume_id).execute()
+    if row:
+        _remove_file(row[0].get("file_path"))
+
+
+def remove_candidate_from_opening(resume_id: str, jd_id: str) -> str:
+    """Remove a candidate from ONE opening only (leaving their other openings
+    intact). Returns 'missing' | 'unlinked' | 'rehomed' | 'deleted'.
+
+    - opening is a cross-mapping        -> delete just that mapping ('unlinked')
+    - opening is home, has other links  -> promote a mapping to home ('rehomed')
+    - opening is home, no other links   -> full delete of the candidate ('deleted')
+    """
+    client = get_client()
+    rows = client.table("resumes").select("id, jd_id").eq("id", resume_id).execute().data
+    if not rows:
+        return "missing"
+    if rows[0]["jd_id"] != jd_id:
+        client.table("candidate_mappings").delete().eq("resume_id", resume_id).eq(
+            "jd_id", jd_id
+        ).execute()
+        return "unlinked"
+
+    mappings = list_mappings_for_resume(resume_id)
+    if mappings:
+        m = mappings[0]  # promote another opening to be this candidate's new home
+        client.table("resumes").update(
+            {
+                "jd_id": m["jd_id"],
+                "hiring_score": m.get("hiring_score"),
+                "rationale": m.get("rationale"),
+                "state": m.get("state") or "shortlisted",
+            }
+        ).eq("id", resume_id).execute()
+        client.table("candidate_mappings").delete().eq("id", m["id"]).execute()
+        return "rehomed"
+
+    delete_resume(resume_id)
+    return "deleted"
+
+
+def delete_jd(jd_id: str) -> None:
+    """Delete a job opening: its home candidates (+ their mappings), any
+    candidates mapped INTO it, the stored JD file, and the row."""
+    client = get_client()
+    rows = client.table("resumes").select("id, file_path").eq("jd_id", jd_id).execute().data
+    resume_ids = [r["id"] for r in rows]
+    if resume_ids:
+        client.table("candidate_mappings").delete().in_("resume_id", resume_ids).execute()
+    client.table("candidate_mappings").delete().eq("jd_id", jd_id).execute()
+    client.table("resumes").delete().eq("jd_id", jd_id).execute()
+    jd = client.table("jds").select("file_path").eq("id", jd_id).execute().data
+    client.table("jds").delete().eq("id", jd_id).execute()
+    for r in rows:
+        _remove_file(r.get("file_path"))
+    if jd:
+        _remove_file(jd[0].get("file_path"))
+
+
+def delete_project(project_id: str) -> None:
+    """Delete a project and everything under it (openings, candidates, mappings)."""
+    client = get_client()
+    jd_rows = client.table("jds").select("id, file_path").eq("project_id", project_id).execute().data
+    jd_ids = [j["id"] for j in jd_rows]
+    if jd_ids:
+        res_rows = client.table("resumes").select("id, file_path").in_("jd_id", jd_ids).execute().data
+        resume_ids = [r["id"] for r in res_rows]
+        if resume_ids:
+            client.table("candidate_mappings").delete().in_("resume_id", resume_ids).execute()
+        client.table("candidate_mappings").delete().in_("jd_id", jd_ids).execute()
+        client.table("resumes").delete().in_("jd_id", jd_ids).execute()
+        client.table("jds").delete().in_("id", jd_ids).execute()
+        for r in res_rows:
+            _remove_file(r.get("file_path"))
+        for j in jd_rows:
+            _remove_file(j.get("file_path"))
+    client.table("projects").delete().eq("id", project_id).execute()
 
 
 def mapping_counts_by_resume() -> dict:

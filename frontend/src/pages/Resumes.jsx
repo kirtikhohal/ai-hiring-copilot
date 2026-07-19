@@ -4,9 +4,9 @@ import PageContainer from "@/components/shell/PageContainer";
 import Stepper from "@/components/shell/Stepper";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Upload, X, ArrowRight, Loader2, FileArchive, Check } from "lucide-react";
+import { Upload, X, ArrowRight, Loader2, FileArchive, Check, FolderInput } from "lucide-react";
 import { ROUTES } from "@/lib/routes";
-import { uploadResumes } from "@/lib/api";
+import { uploadResumes, importLocalResumes } from "@/lib/api";
 
 function formatSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -31,6 +31,7 @@ function ModeToggle({ mode, setMode }) {
     <div className="flex gap-[3px] rounded-[11px] bg-track p-[3px]">
       {opt("individual", "Individual files")}
       {opt("zip", "ZIP folder")}
+      {opt("server", "Server folder")}
     </div>
   );
 }
@@ -46,6 +47,8 @@ export default function Resumes() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const isZip = mode === "zip";
+  const isServer = mode === "server";
+  const roleTitle = state?.roleTitle;
 
   function switchMode(next) {
     setMode(next);
@@ -70,16 +73,24 @@ export default function Resumes() {
   }
 
   async function handleSubmit() {
-    if (files.length === 0 || uploading) return;
+    if (uploading) return;
+    if (!isServer && files.length === 0) return;
     setUploading(true);
     setError("");
     try {
-      const res = await uploadResumes(jdId, files, source);
+      const res = isServer
+        ? await importLocalResumes(jdId, source)
+        : await uploadResumes(jdId, files, source);
       navigate(ROUTES.processing(jdId), {
-        state: { roleTitle: state?.roleTitle, resumes: res.resumes },
+        state: { roleTitle, resumes: res.resumes },
       });
     } catch (e) {
-      setError(e.message || "Something went wrong uploading resumes.");
+      setError(
+        e.message ||
+          (isServer
+            ? "Could not fetch resumes from the server folder."
+            : "Something went wrong uploading resumes.")
+      );
       setUploading(false);
     }
   }
@@ -132,36 +143,56 @@ export default function Resumes() {
         onChange={(e) => addFiles(e.target.files)}
       />
 
-      {/* Dropzone */}
-      <button
-        type="button"
-        onClick={() => fileInputRef.current?.click()}
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => {
-          e.preventDefault();
-          addFiles(e.dataTransfer.files);
-        }}
-        disabled={uploading}
-        className="mt-4 w-full rounded-card border-2 border-dashed border-accent-border bg-accent-tint-gradient p-8 text-center transition-colors hover:border-accent disabled:opacity-70"
-      >
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-[13px] bg-white text-accent shadow-[0_4px_14px_rgba(99,102,241,.18)]">
-          {isZip ? <FileArchive size={21} strokeWidth={2.2} /> : <Upload size={21} strokeWidth={2.2} />}
+      {/* Dropzone (individual / zip) OR server-folder panel */}
+      {isServer ? (
+        <div className="mt-4 rounded-card border-2 border-dashed border-accent-border bg-accent-tint-gradient p-8 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-[13px] bg-white text-accent shadow-[0_4px_14px_rgba(99,102,241,.18)]">
+            <FolderInput size={21} strokeWidth={2.2} />
+          </div>
+          <div className="mt-3 text-[15px] font-extrabold tracking-tight15 text-ink">
+            Fetch resumes from the server folder
+          </div>
+          <div className="mt-1 text-[12.5px] font-medium text-ink-muted">
+            Hazel reads all PDFs from your configured base folder at:
+          </div>
+          <div className="mt-2.5 inline-flex items-center gap-1.5 rounded-input border border-border-strong bg-white px-3 py-1.5 font-mono text-[12px] font-semibold text-ink">
+            …/{roleTitle || "<job opening>"}/{source === "internal" ? "Internal" : "External"}
+          </div>
+          <div className="mt-2.5 text-[11.5px] font-medium text-ink-muted">
+            Uses the <span className="font-bold">Candidate source</span> above · up to 20 at a time
+          </div>
         </div>
-        <div className="mt-3 text-[15px] font-extrabold tracking-tight15 text-ink">
-          {isZip ? (
-            <>
-              Drop a ZIP here, or <span className="text-accent">browse</span>
-            </>
-          ) : (
-            <>
-              Drop resumes here, or <span className="text-accent">browse</span>
-            </>
-          )}
-        </div>
-        <div className="mt-1 text-[12.5px] font-medium text-ink-muted">
-          {isZip ? "One ZIP containing all resumes" : "PDF · up to 20 files"}
-        </div>
-      </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault();
+            addFiles(e.dataTransfer.files);
+          }}
+          disabled={uploading}
+          className="mt-4 w-full rounded-card border-2 border-dashed border-accent-border bg-accent-tint-gradient p-8 text-center transition-colors hover:border-accent disabled:opacity-70"
+        >
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-[13px] bg-white text-accent shadow-[0_4px_14px_rgba(99,102,241,.18)]">
+            {isZip ? <FileArchive size={21} strokeWidth={2.2} /> : <Upload size={21} strokeWidth={2.2} />}
+          </div>
+          <div className="mt-3 text-[15px] font-extrabold tracking-tight15 text-ink">
+            {isZip ? (
+              <>
+                Drop a ZIP here, or <span className="text-accent">browse</span>
+              </>
+            ) : (
+              <>
+                Drop resumes here, or <span className="text-accent">browse</span>
+              </>
+            )}
+          </div>
+          <div className="mt-1 text-[12.5px] font-medium text-ink-muted">
+            {isZip ? "One ZIP containing all resumes" : "PDF · up to 20 files"}
+          </div>
+        </button>
+      )}
 
       {error && (
         <div className="mt-4 rounded-panel border border-red-soft bg-red-soft px-4 py-3 text-[13px] font-medium text-red-text">
@@ -227,15 +258,19 @@ export default function Resumes() {
         <Button variant="ghost" onClick={() => navigate(ROUTES.jd)}>
           Back
         </Button>
-        <Button onClick={handleSubmit} disabled={files.length === 0 || uploading}>
+        <Button onClick={handleSubmit} disabled={uploading || (!isServer && files.length === 0)}>
           {uploading ? (
             <>
               <Loader2 size={16} strokeWidth={2.5} className="animate-spin" />
-              Screening…
+              {isServer ? "Fetching…" : "Screening…"}
             </>
           ) : (
             <>
-              {isZip ? "Screen candidates" : `Screen ${files.length} candidate${files.length === 1 ? "" : "s"}`}
+              {isServer
+                ? "Fetch & screen"
+                : isZip
+                  ? "Screen candidates"
+                  : `Screen ${files.length} candidate${files.length === 1 ? "" : "s"}`}
               <ArrowRight size={16} strokeWidth={2.5} />
             </>
           )}

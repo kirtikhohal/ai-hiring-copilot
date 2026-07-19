@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROUTES, getProjectNav } from "@/lib/routes";
-import { getJD, rankCandidates, assetUrl } from "@/lib/api";
+import { getJD, assetUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
 // lucide icon per nav key
@@ -98,7 +98,10 @@ export default function Sidebar() {
     () => localStorage.getItem("hazel_sb_collapsed") === "1"
   );
   const [roleTitle, setRoleTitle] = useState();
-  const [topCandidateId, setTopCandidateId] = useState(null);
+  // Interview-prep / Emails nav links fall back to the candidates list (no
+  // top-candidate lookup here — that full ranking fetch on every project page
+  // was a big latency hit).
+  const topCandidateId = null;
 
   function toggle() {
     setCollapsed((c) => {
@@ -108,22 +111,16 @@ export default function Sidebar() {
     });
   }
 
-  // Real project title + top candidate from the backend (GET-only, no LLM).
+  // Just the project title (one light GET, no LLM, no ranking).
   useEffect(() => {
     if (!jdId) {
       setRoleTitle(undefined);
-      setTopCandidateId(null);
       return;
     }
     let cancelled = false;
     getJD(jdId)
       .then((r) => {
         if (!cancelled) setRoleTitle(r.parsed?.role_title);
-      })
-      .catch(() => {});
-    rankCandidates(jdId)
-      .then((r) => {
-        if (!cancelled) setTopCandidateId(r.ranked_candidates?.[0]?.resume_id ?? null);
       })
       .catch(() => {});
     return () => {

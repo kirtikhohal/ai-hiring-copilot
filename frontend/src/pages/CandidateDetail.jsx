@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import ScoreRing from "@/components/ui/score-ring";
-import { ArrowLeft, Check, ArrowRight, Loader2, RefreshCw, Mail, Plus, X, Briefcase, Building2 } from "lucide-react";
+import { ArrowLeft, Check, ArrowRight, Loader2, RefreshCw, Mail, Plus, X, Briefcase, Building2, Trash2 } from "lucide-react";
 import { ROUTES } from "@/lib/routes";
 import {
   rankCandidates,
@@ -16,6 +16,7 @@ import {
   setCandidateState,
   setMappingState,
   removeCandidateMapping,
+  removeCandidateFromOpening,
   getProjects,
 } from "@/lib/api";
 import { initialsFromName, paletteFor, scoreBand } from "@/lib/candidates";
@@ -23,6 +24,7 @@ import { DesignationBar, ResumeViewButton } from "@/components/shell/doc-views";
 import { SourceBadge, StateBadge } from "@/components/ui/candidate-badges";
 import { STATES } from "@/lib/lifecycle";
 import Modal from "@/components/ui/modal";
+import ConfirmDialog from "@/components/ui/confirm-dialog";
 import { useToast } from "@/lib/toast";
 
 // Compact lifecycle-state <select>.
@@ -240,6 +242,23 @@ export default function CandidateDetail() {
   const [biasBusy, setBiasBusy] = useState(false);
   const [assoc, setAssoc] = useState(null); // { source, associations: [...] }
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function doDeleteCandidate() {
+    setDeleting(true);
+    try {
+      const res = await removeCandidateFromOpening(candidateId, jdId);
+      toast.success(
+        res.deleted ? "Candidate deleted" : "Removed from this job opening",
+        candidate?.name || ""
+      );
+      navigate(ROUTES.ranked(jdId), { state: { roleTitle: state?.roleTitle } });
+    } catch (e) {
+      toast.error("Couldn't remove candidate", e.message || "");
+      setDeleting(false);
+    }
+  }
 
   function refreshAssoc() {
     return getCandidateMappings(candidateId)
@@ -491,6 +510,13 @@ export default function CandidateDetail() {
                 <ArrowRight size={15} strokeWidth={2.5} />
               </Button>
             </div>
+            <button
+              onClick={() => setConfirmDel(true)}
+              title="Remove from this job opening"
+              className="shrink-0 rounded-md p-2 text-ink-faint transition-colors hover:bg-red-soft hover:text-red-text"
+            >
+              <Trash2 size={17} strokeWidth={2.2} />
+            </button>
           </div>
         )}
       </Card>
@@ -705,6 +731,24 @@ export default function CandidateDetail() {
         onClose={() => setPickerOpen(false)}
         excludeIds={(assoc?.associations ?? []).map((a) => a.jd_id)}
         onPick={addToRequirement}
+      />
+
+      <ConfirmDialog
+        open={confirmDel}
+        onClose={() => setConfirmDel(false)}
+        onConfirm={doDeleteCandidate}
+        busy={deleting}
+        title={
+          (assoc?.associations?.length ?? 1) > 1
+            ? "Remove from this job opening?"
+            : "Delete candidate?"
+        }
+        confirmLabel={(assoc?.associations?.length ?? 1) > 1 ? "Remove" : "Delete"}
+        message={
+          (assoc?.associations?.length ?? 1) > 1
+            ? `Remove ${candidate?.name || "this candidate"} from this job opening only? They'll stay on their other openings.`
+            : `Delete ${candidate?.name || "this candidate"}? This is their only opening, so the candidate will be removed entirely. This can't be undone.`
+        }
       />
     </PageContainer>
   );

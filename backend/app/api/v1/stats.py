@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.db import crud
+from app.utils.parallel import gather
 from app.models.schemas import DashboardStats
 
 router = APIRouter()
@@ -16,8 +17,7 @@ MINUTES_SAVED_PER_PROJECT = 20
 
 @router.get("/dashboard", response_model=DashboardStats)
 def dashboard_stats():
-    projects = crud.count_projects()
-    resumes = crud.count_resumes()
+    projects, resumes = gather(crud.count_projects, crud.count_resumes)
     minutes = resumes * MINUTES_SAVED_PER_RESUME + projects * MINUTES_SAVED_PER_PROJECT
     return DashboardStats(
         active_projects=projects,

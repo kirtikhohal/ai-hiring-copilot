@@ -4,6 +4,7 @@ import PageContainer from "@/components/shell/PageContainer";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Modal from "@/components/ui/modal";
+import ConfirmDialog from "@/components/ui/confirm-dialog";
 import {
   Plus,
   ChevronRight,
@@ -11,10 +12,17 @@ import {
   Briefcase,
   FileText,
   Clock,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/routes";
-import { getProjects, getDashboardStats, createProject } from "@/lib/api";
+import {
+  getProjects,
+  getDashboardStats,
+  createProject,
+  deleteProject,
+  deleteJobOpening,
+} from "@/lib/api";
 import { useAuth, firstNameOf } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
 
@@ -56,27 +64,26 @@ function initialsFromTitle(title) {
 }
 
 // --- One designation row inside an expanded project ---
-function DesignationRow({ d, onClick }) {
+function DesignationRow({ d, onClick, onDelete }) {
   return (
-    <button
-      onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-[12px] border border-hairline bg-surface px-3.5 py-3 text-left transition-all duration-150 hover:-translate-y-[2px] hover:border-border-strong hover:shadow-lift"
-    >
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-accent-soft text-[11.5px] font-extrabold text-accent">
-        {initialsFromTitle(d.role_title)}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-[14px] font-bold tracking-tight2 text-ink">
-          {d.role_title}
+    <div className="group flex items-center gap-3 rounded-[12px] border border-hairline bg-surface px-3.5 py-3 transition-all duration-150 hover:-translate-y-[2px] hover:border-border-strong hover:shadow-lift">
+      <button onClick={onClick} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-accent-soft text-[11.5px] font-extrabold text-accent">
+          {initialsFromTitle(d.role_title)}
         </div>
-        <div className="mt-0.5 text-[12px] font-medium text-ink-muted">
-          {d.resume_count} candidate{d.resume_count === 1 ? "" : "s"}
-          {d.top_score != null ? ` · top score ${d.top_score}` : " · not screened yet"}
-          {d.shortlisted > 0 && (
-            <span className="font-bold text-green-text"> · {d.shortlisted} shortlisted</span>
-          )}
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[14px] font-bold tracking-tight2 text-ink">
+            {d.role_title}
+          </div>
+          <div className="mt-0.5 text-[12px] font-medium text-ink-muted">
+            {d.resume_count} candidate{d.resume_count === 1 ? "" : "s"}
+            {d.top_score != null ? ` · top score ${d.top_score}` : " · not screened yet"}
+            {d.shortlisted > 0 && (
+              <span className="font-bold text-green-text"> · {d.shortlisted} shortlisted</span>
+            )}
+          </div>
         </div>
-      </div>
+      </button>
       <span
         className={cn(
           "flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-bold",
@@ -91,12 +98,19 @@ function DesignationRow({ d, onClick }) {
         />
         {d.top_score != null ? "Ranked" : "Not screened"}
       </span>
-    </button>
+      <button
+        onClick={onDelete}
+        title="Delete job opening"
+        className="shrink-0 rounded-md p-1.5 text-ink-faint transition-colors hover:bg-red-soft hover:text-red-text"
+      >
+        <Trash2 size={15} strokeWidth={2.2} />
+      </button>
+    </div>
   );
 }
 
 // --- One project card (expandable) ---
-function ProjectCard({ project, expanded, onToggle, navigate }) {
+function ProjectCard({ project, expanded, onToggle, navigate, onDeleteProject, onDeleteOpening }) {
   const isClient = project.type === "client";
   const isUnassigned = !project.id;
   const company = isClient ? project.client_name : project.company_name;
@@ -152,24 +166,33 @@ function ProjectCard({ project, expanded, onToggle, navigate }) {
           />
         </button>
         {!isUnassigned && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="shrink-0"
-            onClick={() =>
-              navigate(ROUTES.jd, {
-                state: {
-                  projectId: project.id,
-                  projectName: project.name,
-                  projectType: project.type,
-                  company,
-                },
-              })
-            }
-          >
-            <Plus size={14} strokeWidth={2.5} />
-            Add job opening
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              onClick={() =>
+                navigate(ROUTES.jd, {
+                  state: {
+                    projectId: project.id,
+                    projectName: project.name,
+                    projectType: project.type,
+                    company,
+                  },
+                })
+              }
+            >
+              <Plus size={14} strokeWidth={2.5} />
+              Add job opening
+            </Button>
+            <button
+              onClick={() => onDeleteProject(project)}
+              title="Delete project"
+              className="shrink-0 rounded-md p-2 text-ink-faint transition-colors hover:bg-red-soft hover:text-red-text"
+            >
+              <Trash2 size={16} strokeWidth={2.2} />
+            </button>
+          </>
         )}
       </div>
 
@@ -187,6 +210,7 @@ function ProjectCard({ project, expanded, onToggle, navigate }) {
               onClick={() =>
                 navigate(ROUTES.ranked(d.jd_id), { state: { roleTitle: d.role_title } })
               }
+              onDelete={() => onDeleteOpening(d)}
             />
           ))}
         </div>
@@ -313,6 +337,28 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [newOpen, setNewOpen] = useState(false);
+  const [confirm, setConfirm] = useState(null); // { kind, id, name }
+  const [deleting, setDeleting] = useState(false);
+
+  async function confirmDelete() {
+    if (!confirm) return;
+    setDeleting(true);
+    try {
+      if (confirm.kind === "project") await deleteProject(confirm.id);
+      else await deleteJobOpening(confirm.id);
+      toast.success(
+        confirm.kind === "project" ? "Project deleted" : "Job opening deleted",
+        confirm.name
+      );
+      setConfirm(null);
+      await loadProjects();
+      getDashboardStats().then(setStats).catch(() => {});
+    } catch (e) {
+      toast.error("Couldn't delete", e.message || "");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   function loadProjects() {
     return getProjects()
@@ -436,6 +482,8 @@ export default function Dashboard() {
               expanded={!!expanded[p.id || "unassigned"]}
               onToggle={() => toggle(p.id || "unassigned")}
               navigate={navigate}
+              onDeleteProject={(proj) => setConfirm({ kind: "project", id: proj.id, name: proj.name })}
+              onDeleteOpening={(d) => setConfirm({ kind: "opening", id: d.jd_id, name: d.role_title })}
             />
           ))}
 
@@ -459,6 +507,19 @@ export default function Dashboard() {
       </div>
 
       <NewProjectModal open={newOpen} onClose={() => setNewOpen(false)} onCreated={() => loadProjects()} />
+
+      <ConfirmDialog
+        open={!!confirm}
+        onClose={() => setConfirm(null)}
+        onConfirm={confirmDelete}
+        busy={deleting}
+        title={confirm?.kind === "project" ? "Delete project?" : "Delete job opening?"}
+        message={
+          confirm?.kind === "project"
+            ? `Delete "${confirm?.name}" and all its job openings and candidates? This can't be undone.`
+            : `Delete the "${confirm?.name}" job opening and all its candidates? This can't be undone.`
+        }
+      />
     </PageContainer>
   );
 }

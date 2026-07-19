@@ -72,6 +72,15 @@ def get_jd(jd_id: str):
     )
 
 
+@router.delete("/{jd_id}")
+def delete_jd(jd_id: str):
+    """Delete a job opening and its candidates (home + mapped-in) + files."""
+    if crud.get_jd_row(jd_id) is None:
+        raise HTTPException(status_code=404, detail="Job opening not found.")
+    crud.delete_jd(jd_id)
+    return {"ok": True}
+
+
 @router.get("/{jd_id}/file")
 def get_jd_file(jd_id: str, download: bool = False):
     """Serve the original JD PDF — inline for quick-view, or as an attachment

@@ -95,6 +95,11 @@ class ResumeUploadResponse(BaseModel):
     resumes: List[ResumeUploadResponseItem]
 
 
+class LocalImportRequest(BaseModel):
+    jd_id: str
+    source: str = "external"  # "internal" | "external" — picks the subfolder
+
+
 class CandidateRanking(BaseModel):
     resume_id: str
     candidate_name: str

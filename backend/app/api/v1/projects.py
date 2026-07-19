@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.deps import get_current_user
 from app.db import crud
+from app.utils.parallel import gather
 from app.models.schemas import (
     ProjectCreateRequest,
     ProjectResponse,
@@ -29,9 +30,10 @@ def list_projects():
     """Every project with its designations (JDs) nested underneath. Legacy JDs
     that predate the projects feature are grouped under a synthetic
     'Unassigned' project so nothing disappears from the dashboard."""
-    projects = crud.list_projects()
-    jds = crud.list_jds_full()
-    stats_by_jd = crud.get_resume_stats_bulk()
+    # Three independent queries run concurrently instead of back-to-back.
+    projects, jds, stats_by_jd = gather(
+        crud.list_projects, crud.list_jds_full, crud.get_resume_stats_bulk
+    )
 
     by_project: dict = {}
     for jd in jds:
@@ -96,3 +98,12 @@ def create_project(req: ProjectCreateRequest, current_user: dict = Depends(get_c
         created_at=project.get("created_at"),
         designations=[],
     )
+
+
+@router.delete("/{project_id}")
+def delete_project(project_id: str):
+    """Delete a project and everything under it (job openings, candidates, mappings)."""
+    if crud.get_project(project_id) is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    crud.delete_project(project_id)
+    return {"ok": True}

@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "dev-secret-change-me"
     JWT_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
 
+    # Base folder for the "import from server folder" resume upload method.
+    # Resumes are read from <RESUME_BASE_PATH>/<Job Opening>/<Internal|External>.
+    RESUME_BASE_PATH: str = ""
+
     # --- Email ---
     # Provider: "smtp" (Gmail etc.), or an HTTP API that works even when the
     # network blocks SMTP ports: "brevo" or "sendgrid".

@@ -17,16 +17,16 @@ from app.models.schemas import (
     CandidateDirectoryResponse,
 )
 from app.services.skill_gap_service import run_skill_gap
+from app.utils.parallel import gather
 from app.db import crud
 
 router = APIRouter()
 
 
-def _association(jd_id: str, state: str, primary: bool, mapping_id=None) -> RequirementAssociation:
-    """Build a candidate↔requirement association with its client/project labels."""
-    row = crud.get_jd_row(jd_id)
-    role_title = (row.get("role_title") if row else "") or "Untitled role"
-    project = crud.get_project(row["project_id"]) if row and row.get("project_id") else None
+def _association(jd_id: str, jd_row, project, state: str, primary: bool, mapping_id=None) -> RequirementAssociation:
+    """Build a candidate↔opening association from already-fetched jd + project
+    rows (no per-association DB calls)."""
+    role_title = (jd_row.get("role_title") if jd_row else "") or "Untitled role"
     return RequirementAssociation(
         mapping_id=mapping_id,
         jd_id=jd_id,
@@ -69,13 +69,17 @@ def _score_resume(jd: dict, resume: dict) -> dict:
 
 
 def _build_ranking_response(jd_id: str, resumes: list) -> RankingResponse:
-    extra = crud.mapping_counts_by_resume()  # resume_id -> # extra requirement links
+    # Two independent queries in parallel: cross-mapped candidates for this
+    # opening + the per-candidate opportunity counts.
+    mapped_in, extra = gather(
+        lambda: crud.get_mapped_in_candidates(jd_id),
+        crud.mapping_counts_by_resume,
+    )
 
-    # Home candidates (scored for this requirement) + candidates cross-mapped
-    # in from another requirement (carry the mapping's own score + state), so a
-    # candidate added to this requirement actually shows up in its list.
+    # Home candidates (scored for this opening) + candidates cross-mapped in
+    # from another opening (carry the mapping's own score + state), so a
+    # candidate added to this opening actually shows up in its list.
     home = [r for r in resumes if r.get("hiring_score") is not None]
-    mapped_in = crud.get_mapped_in_candidates(jd_id)
     home_ids = {r["resume_id"] for r in home}
     merged = home + [m for m in mapped_in if m["resume_id"] not in home_ids]
 
@@ -135,6 +139,25 @@ def get_ranking(jd_id: str):
 
     resumes = crud.get_resumes(jd_id)
     return _build_ranking_response(jd_id, resumes)
+
+
+@router.delete("/{resume_id}")
+def delete_candidate(resume_id: str):
+    """Delete a candidate entirely (all openings + mappings + résumé)."""
+    if crud.get_resume(resume_id) is None:
+        raise HTTPException(status_code=404, detail="Candidate not found.")
+    crud.delete_resume(resume_id)
+    return {"ok": True}
+
+
+@router.delete("/{resume_id}/openings/{jd_id}")
+def remove_candidate_from_opening(resume_id: str, jd_id: str):
+    """Remove a candidate from ONE opening only — other openings are untouched.
+    If it was their only opening, the candidate is removed entirely."""
+    outcome = crud.remove_candidate_from_opening(resume_id, jd_id)
+    if outcome == "missing":
+        raise HTTPException(status_code=404, detail="Candidate not found.")
+    return {"ok": True, "deleted": outcome == "deleted"}
 
 
 @router.get("/all", response_model=CandidateDirectoryResponse)
@@ -213,9 +236,21 @@ def get_candidate_mappings(resume_id: str):
     if resume is None:
         raise HTTPException(status_code=404, detail="resume_id not found.")
 
-    associations = [_association(resume["jd_id"], resume.get("state") or "profile_imported", True)]
-    for m in crud.list_mappings_for_resume(resume_id):
-        associations.append(_association(m["jd_id"], m.get("state") or "shortlisted", False, m["id"]))
+    mappings = crud.list_mappings_for_resume(resume_id)
+    # Batch-fetch every referenced JD + project once (no per-association calls).
+    jd_by = crud.get_jd_rows([resume["jd_id"]] + [m["jd_id"] for m in mappings])
+    proj_by = crud.get_projects_by_ids([r.get("project_id") for r in jd_by.values()])
+
+    def proj_of(jd_row):
+        return proj_by.get(jd_row.get("project_id")) if jd_row else None
+
+    home_jd = jd_by.get(resume["jd_id"])
+    associations = [
+        _association(resume["jd_id"], home_jd, proj_of(home_jd), resume.get("state") or "profile_imported", True)
+    ]
+    for m in mappings:
+        jr = jd_by.get(m["jd_id"])
+        associations.append(_association(m["jd_id"], jr, proj_of(jr), m.get("state") or "shortlisted", False, m["id"]))
 
     return CandidateAssociations(
         resume_id=resume_id,

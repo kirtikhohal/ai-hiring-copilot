@@ -139,6 +139,21 @@ export function createProject({ name, type, clientName }) {
   });
 }
 
+// ---- Deletes (cascading) ----
+export function deleteProject(projectId) {
+  return request(`/api/v1/projects/${projectId}`, { method: "DELETE" });
+}
+export function deleteJobOpening(jdId) {
+  return request(`/api/v1/jd/${jdId}`, { method: "DELETE" });
+}
+export function deleteCandidate(resumeId) {
+  return request(`/api/v1/candidates/${resumeId}`, { method: "DELETE" });
+}
+// Remove a candidate from ONE opening only (keeps their other openings).
+export function removeCandidateFromOpening(resumeId, jdId) {
+  return request(`/api/v1/candidates/${resumeId}/openings/${jdId}`, { method: "DELETE" });
+}
+
 // GET /api/v1/jd/{jd_id}/bias -> { jd_id, bias_flags: [...], overall_risk }
 // Cached after first run; pass refresh=true to force a fresh LLM call.
 export function getBiasReport(jdId, refresh = false) {
@@ -154,6 +169,15 @@ export function uploadResumes(jdId, files, source = "external") {
   formData.append("source", source);
   files.forEach((file) => formData.append("files", file));
   return request("/api/v1/resumes/upload", { method: "POST", body: formData });
+}
+
+// POST /api/v1/resumes/import-local — fetch resumes from a server folder:
+// <RESUME_BASE_PATH>/<role>/<Internal|External>. Same result shape as upload.
+export function importLocalResumes(jdId, source = "external") {
+  return request("/api/v1/resumes/import-local", {
+    method: "POST",
+    json: { jd_id: jdId, source },
+  });
 }
 
 // ---- Candidates ----
