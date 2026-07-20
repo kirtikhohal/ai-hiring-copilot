@@ -215,7 +215,7 @@ export function getCandidateMappings(resumeId) {
 }
 
 // POST /api/v1/candidates/{resume_id}/mappings -> updated associations
-export function addCandidateMapping(resumeId, jdId, state = "shortlisted") {
+export function addCandidateMapping(resumeId, jdId, state = "matched") {
   return request(`/api/v1/candidates/${resumeId}/mappings`, {
     method: "POST",
     json: { jd_id: jdId, state },

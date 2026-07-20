@@ -239,7 +239,7 @@ def set_resume_state(resume_id: str, state: str) -> None:
 def add_candidate_mapping(
     resume_id: str,
     jd_id: str,
-    state: str = "shortlisted",
+    state: str = "matched",
     hiring_score=None,
     rationale=None,
 ) -> dict:
@@ -284,7 +284,7 @@ def get_mapped_in_candidates(jd_id: str) -> List[dict]:
                 "hiring_score": m.get("hiring_score"),
                 "rationale": m.get("rationale"),
                 "source": r.get("source") or "external",
-                "state": m.get("state") or "shortlisted",
+                "state": m.get("state") or "matched",
                 "mapping_id": m["id"],
                 "shared": True,
                 "parsed": {field: r[field] for field in RESUME_FIELDS},
@@ -401,7 +401,7 @@ def remove_candidate_from_opening(resume_id: str, jd_id: str) -> str:
                 "jd_id": m["jd_id"],
                 "hiring_score": m.get("hiring_score"),
                 "rationale": m.get("rationale"),
-                "state": m.get("state") or "shortlisted",
+                "state": m.get("state") or "matched",
             }
         ).eq("id", resume_id).execute()
         client.table("candidate_mappings").delete().eq("id", m["id"]).execute()

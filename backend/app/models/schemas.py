@@ -130,7 +130,7 @@ class CandidateStateUpdate(BaseModel):
 
 class MappingCreate(BaseModel):
     jd_id: str
-    state: str = "shortlisted"
+    state: str = "matched"  # a newly added candidate is "Matched with JD", not shortlisted
 
 
 class MappingStateUpdate(BaseModel):

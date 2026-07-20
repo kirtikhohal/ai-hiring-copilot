@@ -250,7 +250,7 @@ def get_candidate_mappings(resume_id: str):
     ]
     for m in mappings:
         jr = jd_by.get(m["jd_id"])
-        associations.append(_association(m["jd_id"], jr, proj_of(jr), m.get("state") or "shortlisted", False, m["id"]))
+        associations.append(_association(m["jd_id"], jr, proj_of(jr), m.get("state") or "matched", False, m["id"]))
 
     return CandidateAssociations(
         resume_id=resume_id,
